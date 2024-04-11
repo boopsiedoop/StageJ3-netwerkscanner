@@ -1,0 +1,183 @@
+/* styles.css */
+body {
+    font-family: Arial, sans-serif;
+    font-size: 18px; /* Default font size for the entire document */
+    background-color: #ffffff;
+}
+header {
+    color: #000000;
+    text-align: right;
+    font-size: 10px; /* font size header*/
+    background-color: #e5e7eba6;
+    height: 140px;
+    margin: -15px;
+
+}
+.logo {
+    max-width: 75px; /* Adjust the maximum width of the logo */
+    height: auto;     /* Maintain aspect ratio */
+    display: block;   /* Remove default inline spacing */
+    margin: left;   /* Center the logo horizontally */
+    float:left;
+    padding: 10px;
+}
+.logo-link {
+    text-decoration: none; /* Remove underline */
+    color: #000000;      /* Use the color of the parent (or default) */
+}
+.headerlink {
+    text-decoration: none; /* Remove underline */
+    color: #000000;      /* Use the color of the parent (or default) */
+    padding: 50px;
+}
+.menulink {
+    text-decoration: none; /* Remove underline */
+    color: #000000;      /* Use the color of the parent (or default) */
+    list-style-type: none;
+}
+ul {
+    list-style-type: none;
+    margin-left: 10px;
+    width: 400px;
+    padding: 0;
+    border: 1px solid #555;
+} 
+li a {
+    display: inline-block;
+    vertical-align:top;
+    padding: 12px;
+    margin: 30px;
+    color: #000;
+    text-decoration: none;
+    text-align: center;
+    background-color: #ee763c;
+    border-bottom: 1px solid #555;
+}
+  /* Change the link color on hover */
+li a:hover {
+    background-color:  #df875b;
+}
+.active {
+    background-color: #ee763c;
+    color: white;
+    text-decoration: none; /* Remove underline */     
+    list-style-type: none;
+  }
+
+section{
+    position: absolute;
+    left: 450px;
+    top: 150px;
+    border: 1px solid #555;
+    width: 950px;
+    height: 600px;
+    padding-left: 10px;
+    padding-right: 10px  
+}
+.leftbox{
+    left: 20px;
+    border: none;
+}
+section.login{
+    left: 20px;
+    border: none;
+    width: 950px;
+    height: 200px;
+}
+
+h1{
+    color: #000000;
+}
+h2{
+    color: rgb(0, 28, 91);
+}
+
+.button {
+    background-color:#ee763c;
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 20px;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 20px;
+}
+
+td, th{
+    border: 1px solid #555;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: #ee763c;
+}
+input{
+    background-color:  #3b82f51e;
+
+}
+nav{
+    display: flex;
+    display: inline-block;
+    
+}
+
+nav a{
+    display: inline-block;
+    background-color: #ee763c;
+    border-radius: 20px;
+    border: 1px solid #ee763c ;
+    text-align: center;
+    width: 270px;
+    height: 50px;
+    margin: 20px;
+    padding-top: 30px;
+}
+nav a.menulink{
+    color: white;
+}
+nav a.headerlink{
+    background-color: inherit;
+    border: none;
+    height: 10px;
+    margin: 10px;
+    width: 150px;
+}
+nav a:hover{
+    background-color: #df875b;
+
+}
+nav a:hover.headerlink{
+    background-color: inherit;
+}
+footer{
+    position: absolute;
+    bottom: -50px;
+    width: 100%;
+    background-color: #e5e7eba6;
+}
+div.footer-bottom{
+    color: #000000;
+    margin-left: 30px;
+    margin-top: -5px;
+    height: 35px;
+}
+input[type=text], input[type=password]{
+    float: right;
+    margin-right: 60%;
+    padding: 6px;
+    width: 200px;
+}
+label {
+    padding: 6px 6px 6px 0;
+    display: inline-block;
+  }
+
