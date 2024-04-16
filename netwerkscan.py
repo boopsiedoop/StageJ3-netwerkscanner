@@ -15,6 +15,34 @@ import socket
 import random
 import concurrent.futures
 from scapy.all import IP, TCP, sr, ICMP
+from datetime import datetime
+import os
+
+def write_results_to_file(results):
+    """Schrijf de resultaten naar een tekstbestand met datum en tijd als bestandsnaam.
+
+    Parameters
+    ----------
+    results : str
+        De resultaten die naar het bestand moeten worden geschreven."""
+    # Bepaal het pad naar de map voor de scanresultaten
+    result_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Scan_resultaten")
+
+    # Controleer of de map bestaat, zo niet, maak deze dan aan
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+
+    now = datetime.now()
+    timestamp = now.strftime("%d-%m-%Y__%H-%M")
+    
+    # Bepaal het volledige pad naar het bestand met de scanresultaten
+    filename = os.path.join(result_directory, f"scan_results_{timestamp}.txt")
+    
+    with open(filename, "w") as file:
+        file.write(results)
+    
+
+
 
 def get_hostname(ip_address):
     """Retrieve the hostname associated with the provided IP address.
@@ -124,7 +152,10 @@ def scan_network(target):
         nm = nmap.PortScanner()
 
         # Perform the scan with timeout
-        nm.scan(hosts=target, arguments='-sV -O', timeout=timeout_seconds)
+        nm.scan(hosts=target, arguments='-sV -O', timeout=timeout_seconds )
+
+        #string om de resultaten in op te slaan
+        results = ""
 
         for host in nm.all_hosts():
             if 'addresses' in nm[host]:
@@ -150,6 +181,14 @@ def scan_network(target):
                 print("OS:", detected_os)
                 print("Open Ports/Services:", ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed")
                 print()
+                
+                # Voeg de resultaten toe aan de resultatenstring
+                results += "Hostname: " + hostname + "\n"
+                results += "IP: " + ip_address + "\n"
+                results += "MAC: " + mac_address + "\n"
+                results += "OS: " + detected_os + "\n"
+                results += "Open Ports/Services: " + ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed"
+                results += "\n\n"
 
     except nmap.PortScannerError as e:
         if 'Timeout' in str(e):
@@ -161,6 +200,9 @@ def scan_network(target):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         sys.exit(1)
+
+    # Schrijf de resultaten naar het bestand
+    write_results_to_file(results)
 
 if __name__ == "__main__":
     """Main function to start the network scan according to the provided subnet."""
