@@ -2,96 +2,143 @@
 Prototype netwerk scanner Mycys platform
 
 Author: Daniëlle van der Tuin
-Version: 0.5
+Version: 0.6 optimalisatie?
 
 Dit script is een eenvoudige netwerkscan die gebruik maakt van: 
-- nmap voor het ondekken van hosts, mac, hostname, Os, services en de versies hiervan 
+- nmap voor het ondekken van hosts, mac, Os, services en de versies hiervan 
 - scapy voor het ontdekken van open poorten door middel van multithreading.
 """
 
 import nmap
-import sys
 import socket
-import random
 import concurrent.futures
 from scapy.all import IP, TCP, sr, ICMP
 from datetime import datetime
 import os
+import random
+from ipaddress import IPv4Network
 
 def write_results_to_file(results):
-    """Schrijf de resultaten naar een tekstbestand met datum en tijd als bestandsnaam.
+    """Write the results to a text file with a timestamp as the filename.
 
-    Parameters
-    ----------
-    results : str
-        De resultaten die naar het bestand moeten worden geschreven."""
-    # Bepaal het pad naar de map voor de scanresultaten
+    Parameters:
+    results (str): The results to be written to the file.
+    """
+    # Determine the directory path for the scan results
     result_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Scan_resultaten")
-
-    # Controleer of de map bestaat, zo niet, maak deze dan aan
+    # Check if the directory exists, if not, create it
     if not os.path.exists(result_directory):
         os.makedirs(result_directory)
-
-    now = datetime.now()
-    timestamp = now.strftime("%d-%m-%Y__%H-%M")
-    
-    # Bepaal het volledige pad naar het bestand met de scanresultaten
+    # Generate a timestamp for the filename
+    timestamp = datetime.now().strftime("%d-%m-%Y__%H-%M")
+    # Create the full path for the file
     filename = os.path.join(result_directory, f"scan_results_{timestamp}.txt")
-    
+    # Write the results to the file
     with open(filename, "w") as file:
         file.write(results)
-    
-
-
 
 def get_hostname(ip_address):
     """Retrieve the hostname associated with the provided IP address.
 
-    Parameters
-    ----------
-    ip_address : str
-        The IP address for which the hostname is to be retrieved.
+    Parameters:
+    ip_address (str): The IP address for which the hostname is to be retrieved.
 
-    Returns
-    -------
-    str
-        The hostname associated with the provided IP address, or "Unknown" if not found."""
+    Returns:
+    str: The hostname associated with the provided IP address, or "Unknown" if not found.
+    """
     try:
+        # The gethostbyaddr function returns a tuple, and we're interested in the first element, which is the hostname
         return socket.gethostbyaddr(ip_address)[0]
     except socket.herror:
         return "Unknown"
+
+def scan_port(host, dst_port, timeout=1):
+    """Scan a single port on a host.
+    Parameters:
+
+    host (str): The IP address or hostname of the host to be scanned.
+    dst_port (int): The number of the port to be scanned.
+    timeout (float): The number of seconds to wait for a response before timing out (default is 1).
+
+    Returns:
+    int or None: The number of the port if it is open, or None if it is closed or could not be determined.
+    """
+    # Generate a random source port number in the range of ephemeral ports (1025-65534)
+    src_port = random.randint(1025, 65534)
+
+    # Send a TCP SYN packet to the destination port and wait for a response
+    ans, _ = sr(IP(dst=host) / TCP(sport=src_port, dport=dst_port, flags="S"), timeout=timeout, verbose=0)
+
+    # Iterate through the response packets
+    for _, resp in ans:
+        if resp.haslayer(TCP):
+            # If the response packet is a TCP packet
+            if resp.getlayer(TCP).flags == 0x12:  # TCP SYN-ACK flag
+                # Send a TCP RST packet to close the connection
+                sr(IP(dst=host) / TCP(sport=src_port, dport=dst_port, flags='R'), timeout=timeout, verbose=0)
+                return dst_port
+        elif resp.haslayer(ICMP):
+            # If the response packet is an ICMP packet (indicating a closed port)
+            if int(resp.getlayer(ICMP).type) == 3 and int(resp.getlayer(ICMP).code) in {1, 2, 3, 9, 10, 13}:
+                return None
+    return None
+
+def version_scan(host, port):
+    """Perform a version scan on the specified host and port.
+
+    Parameters:
+    host (str): The IP address or hostname of the host to be scanned.
+    port (int): The number of the port to be scanned.
+
+    Returns:
+    str: Information about the service running on the port, including version if available.
+    """
+    # Initialize a new instance of the Nmap PortScanner
+    nm = nmap.PortScanner()
     
+    # Perform a version scan on the specified host and port
+    nm.scan(hosts=host, ports=str(port), arguments='-sV')
+    
+    # Extract service information from the scan results
+    service_info = nm[host]['tcp'][port]
+    
+    # Extract service name and version
+    service_name = service_info['name']
+    service_version = service_info['version']
+    
+    # Return information about the service, including version if available
+    if service_version:
+        return f"{service_name}({port}) - Version: {service_version}"
+    else:
+        return f"{service_name}({port}) - No version detected"
+
 def get_open_ports(host, timeout=1):
-    """Function to scan a host for open ports and return a list of open ports.
+    """Scan a host for open ports and return a list of open ports.
 
-    Parameters
-    ----------
-    host : str
-        The IP address or hostname of the host to be scanned.
-    timeout : float, optional
-        The number of seconds to wait for a response before timing out (default is 1).
+    Parameters:
+    host (str): The IP address or hostname of the host to be scanned.
+    timeout (float): The number of seconds to wait for a response before timing out (default is 1).
 
-    Returns
-    -------
-    list
-        A list of integers representing the numbers of all open ports on the specified host. """
+    Returns:
+    list: A list of integers representing the numbers of all open ports on the specified host.
+    """
+    # array voor de open poorten
     open_ports = []
 
+    # open ports to scan file and put in array
     with open("constants/ports.txt", "r") as file:
         ports = file.read()
-
     port_list = []
-
     for p in ports.split(","):
         if "-" in p:
             start, end = p.split("-")
             port_list.extend(range(int(start), int(end)+1))
         else:
             port_list.append(int(p))
-            
+
+    # multithreadths port check if open if it is put it in the openports array
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {executor.submit(scan_port, host, dst_port, timeout): dst_port for dst_port in port_list}
-
         for future in concurrent.futures.as_completed(futures):
             dst_port = futures[future]
             try:
@@ -102,48 +149,12 @@ def get_open_ports(host, timeout=1):
                 print(f"Exception occurred while scanning port {dst_port}: {e}")
     return open_ports     
 
-def scan_port(host, dst_port, timeout=1):
-    """Function to scan a single port on a host.
-
-    Parameters
-    ----------
-    host : str
-        The IP address or hostname of the host to be scanned.
-    dst_port : int
-        The number of the port to be scanned.
-    timeout : float, optional
-        The number of seconds to wait for a response before timing out (default is 1).
-
-    Returns
-    -------
-    int or None
-        The number of the port if it is open, or None if it is closed or could not be determined."""
-    src_port = random.randint(1025, 65534)
-    ans, _ = sr(IP(dst=host) / TCP(sport=src_port, dport=dst_port, flags="S"), timeout=timeout, verbose=0)
-
-    for _, resp in ans:
-        if resp.haslayer(TCP):
-            if resp.getlayer(TCP).flags == 0x12:
-                sr(IP(dst=host) / TCP(sport=src_port, dport=dst_port, flags='R'), timeout=timeout, verbose=0)
-                return dst_port
-        elif resp.haslayer(ICMP):
-            if int(resp.getlayer(ICMP).type) == 3 and int(
-                resp.getlayer(ICMP).code
-            ) in {1, 2, 3, 9, 10, 13}:
-                return None
-    return None
-
 def scan_network(target):
-    """Function to perform a network scan using Nmap and retrieve information about open ports, services, OS, and hostname for each host.
+    """Perform a network scan using Nmap and retrieve information about open ports, services, OS, and hostname for each host.
 
-    Parameters
-    ----------
-    target : str
-        The target IP range or host to be scanned.
-
-    Returns
-    -------
-    None"""
+    Parameters:
+    target (str): The target IP range or host to be scanned.
+    """
     try:
         # Set a timeout value for the scan (in seconds)
         timeout_seconds = 120
@@ -151,12 +162,14 @@ def scan_network(target):
         # Initialize Nmap PortScanner object
         nm = nmap.PortScanner()
 
+        #
+        hosts = [str(ip) for ip in IPv4Network(target)]
+       
         # Perform the scan with timeout
-        nm.scan(hosts=target, arguments='-sV -O', timeout=timeout_seconds )
-
-        #string om de resultaten in op te slaan
+        nm.scan(hosts=" ".join(hosts), arguments='-O', timeout=timeout_seconds)
+        
+        # string om de resultaten in op te slaan
         results = ""
-
         for host in nm.all_hosts():
             if 'addresses' in nm[host]:
                 ip_address = host
@@ -169,27 +182,27 @@ def scan_network(target):
                 open_ports = get_open_ports(host)
                 
                 # Extract service names and port numbers for open ports, including versions
-                services_with_ports_and_versions = [f"{nm[host]['tcp'][port]['name']}({port}) - Version: {nm[host]['tcp'][port]['version']}" if nm[host]['tcp'][port]['version'] else f"{nm[host]['tcp'][port]['name']}({port}) - No version detected" for port in open_ports]
-
+                services_with_ports_and_versions = [version_scan(ip_address, port) for port in open_ports]
+                
                 # Extract OS information
                 detected_os = nm[host]['osmatch'][0]['name'] if 'osmatch' in nm[host] and nm[host]['osmatch'] else "Unknown"
 
-                # Print information line by line
+                # print alle resultaten in de terminal
                 print("Hostname:", hostname)
                 print("IP:", ip_address)
                 print("MAC:", mac_address)
                 print("OS:", detected_os)
                 print("Open Ports/Services:", ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed")
                 print()
-                
-                # Voeg de resultaten toe aan de resultatenstring
-                results += "Hostname: " + hostname + "\n"
-                results += "IP: " + ip_address + "\n"
-                results += "MAC: " + mac_address + "\n"
-                results += "OS: " + detected_os + "\n"
-                results += "Open Ports/Services: " + ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed"
-                results += "\n\n"
 
+                # schrijf alle resultaten naar de results array
+                results += f"Hostname: {hostname}\n"
+                results += f"IP: {ip_address}\n"
+                results += f"MAC: {mac_address}\n"
+                results += f"OS: {detected_os}\n"
+                results += f"Open Ports/Services: {', '.join(services_with_ports_and_versions)}" if services_with_ports_and_versions else "All closed"
+                results += "\n\n"
+          
     except nmap.PortScannerError as e:
         if 'Timeout' in str(e):
             print("Scan timeout: The Nmap process took longer than the specified timeout to complete.")
@@ -201,7 +214,7 @@ def scan_network(target):
         print(f"An unexpected error occurred: {e}")
         sys.exit(1)
 
-    # Schrijf de resultaten naar het bestand
+  # Schrijf de resultaten naar het bestand
     write_results_to_file(results)
 
 if __name__ == "__main__":
