@@ -2,7 +2,7 @@
 Prototype netwerk scanner Mycys platform
 
 Author: Daniëlle van der Tuin
-Version: 0.6 optimalisatie?
+Version: 0.7 geen error meer als de results string leeg is na een timeout van nmap en sneller maken
 
 Dit script is een eenvoudige netwerkscan die gebruik maakt van: 
 - nmap voor het ondekken van hosts, mac, Os, services en de versies hiervan 
@@ -33,10 +33,35 @@ def write_results_to_file(results):
     timestamp = datetime.now().strftime("%d-%m-%Y__%H-%M")
     # Create the full path for the file
     filename = os.path.join(result_directory, f"scan_results_{timestamp}.txt")
-    # Write the results to the file
-    with open(filename, "w") as file:
-        file.write(results)
+    
+    # Check if there are results to write
+    if results:
+        # Write the results to the file
+        with open(filename, "w") as file:
+            file.write(results)
+    else:
+        # If no results are available, write a message to indicate that
+        print("No results to save.")
 
+def get_active_hosts(target):
+    """Scan for active hosts using Nmap.
+
+    Parameters:
+    target (str): The target IP range or subnet to be scanned.
+
+    Returns:
+    list: A list of active IP addresses.
+    """
+    nm = nmap.PortScanner()
+    nm.scan(hosts=target, arguments='-sn')
+
+    active_hosts = []
+    for host in nm.all_hosts():
+        if nm[host]['status']['state'] == 'up':
+            active_hosts.append(host)
+
+    return active_hosts
+    
 def get_hostname(ip_address):
     """Retrieve the hostname associated with the provided IP address.
 
@@ -83,22 +108,22 @@ def scan_port(host, dst_port, timeout=1):
                 return None
     return None
 
-def version_scan(host, port):
-    """Perform a version scan on the specified host and port.
+def version_scan_with_vulns(host, port):
+    """Perform a version scan on the specified host and port and retrieve vulnerability information.
 
     Parameters:
     host (str): The IP address or hostname of the host to be scanned.
     port (int): The number of the port to be scanned.
 
     Returns:
-    str: Information about the service running on the port, including version if available.
+    str: Information about the service running on the port, including version and vulnerabilities if available.
     """
     # Initialize a new instance of the Nmap PortScanner
     nm = nmap.PortScanner()
     
     # Perform a version scan on the specified host and port
-    nm.scan(hosts=host, ports=str(port), arguments='-sV')
-    
+    nm.scan(hosts=host, ports=str(port), arguments='-sV --script vulners')
+
     # Extract service information from the scan results
     service_info = nm[host]['tcp'][port]
     
@@ -106,11 +131,14 @@ def version_scan(host, port):
     service_name = service_info['name']
     service_version = service_info['version']
     
-    # Return information about the service, including version if available
+    # Extract vulnerability information
+    vulnerabilities = service_info.get('script', {}).get('vulners', '')
+
+    # Return information about the service, including version and vulnerabilities if available
     if service_version:
-        return f"{service_name}({port}) - Version: {service_version}"
+        return f"{service_name}({port}) - Version: {service_version}\nVulnerabilities:{vulnerabilities}"
     else:
-        return f"{service_name}({port}) - No version detected"
+        return f"{service_name}({port})"
 
 def get_open_ports(host, timeout=1):
     """Scan a host for open ports and return a list of open ports.
@@ -156,52 +184,53 @@ def scan_network(target):
     target (str): The target IP range or host to be scanned.
     """
     try:
+        # Get active hosts
+        active_hosts = get_active_hosts(target)
+
         # Set a timeout value for the scan (in seconds)
         timeout_seconds = 120
         
-        # Initialize Nmap PortScanner object
-        nm = nmap.PortScanner()
-
-        #
-        hosts = [str(ip) for ip in IPv4Network(target)]
-       
-        # Perform the scan with timeout
-        nm.scan(hosts=" ".join(hosts), arguments='-O', timeout=timeout_seconds)
-        
-        # string om de resultaten in op te slaan
+        # Initialize string to store results
         results = ""
-        for host in nm.all_hosts():
-            if 'addresses' in nm[host]:
-                ip_address = host
-                mac_address = nm[host]['addresses'].get('mac', 'N/A')
-                
-                # Get hostname using socket
-                hostname = get_hostname(ip_address)
-                
-                # Extract all open ports
-                open_ports = get_open_ports(host)
-                
-                # Extract service names and port numbers for open ports, including versions
-                services_with_ports_and_versions = [version_scan(ip_address, port) for port in open_ports]
-                
-                # Extract OS information
-                detected_os = nm[host]['osmatch'][0]['name'] if 'osmatch' in nm[host] and nm[host]['osmatch'] else "Unknown"
+        
+        for host in active_hosts:
+            # Initialize Nmap PortScanner object
+            nm = nmap.PortScanner()
+            ip_address = host
 
-                # print alle resultaten in de terminal
-                print("Hostname:", hostname)
-                print("IP:", ip_address)
-                print("MAC:", mac_address)
-                print("OS:", detected_os)
-                print("Open Ports/Services:", ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed")
-                print()
+            # Scan for OS detection
+            nm.scan(hosts=host, arguments='-O', timeout=timeout_seconds)
+            
+            # Get hostname using socket
+            hostname = get_hostname(host)
+            
+            # Extract all open ports
+            open_ports = get_open_ports(host)
+            
+            # Extract service names and port numbers for open ports, including versions
+            services_with_ports_and_versions = [version_scan_with_vulns(host, port) for port in open_ports]
 
-                # schrijf alle resultaten naar de results array
-                results += f"Hostname: {hostname}\n"
-                results += f"IP: {ip_address}\n"
-                results += f"MAC: {mac_address}\n"
-                results += f"OS: {detected_os}\n"
-                results += f"Open Ports/Services: {', '.join(services_with_ports_and_versions)}" if services_with_ports_and_versions else "All closed"
-                results += "\n\n"
+            # Extract OS information
+            detected_os = nm[host]['osmatch'][0]['name'] if 'osmatch' in nm[host] and nm[host]['osmatch'] else "Unknown"
+            
+            # Extract MAC address
+            mac_address = nm[host]['addresses'].get('mac', 'N/A')
+
+            # print alle resultaten in de terminal
+            print("Hostname:", hostname)
+            print("IP:", ip_address)
+            print("MAC:", mac_address)
+            print("OS:", detected_os)
+            print("Open Vulnerable Ports/Services:", ', '.join(services_with_ports_and_versions) if services_with_ports_and_versions else "All closed")
+            print()
+
+            # schrijf alle resultaten naar de results array
+            results += f"Hostname: {hostname}\n"
+            results += f"IP: {ip_address}\n"
+            results += f"MAC: {mac_address}\n"
+            results += f"OS: {detected_os}\n"
+            results += f"Open Vulnerable Ports/Services: {', '.join(services_with_ports_and_versions)}" if services_with_ports_and_versions else "All closed"
+            results += "\n\n"
           
     except nmap.PortScannerError as e:
         if 'Timeout' in str(e):
